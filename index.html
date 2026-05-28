@@ -301,6 +301,13 @@
   .cal-day.gray { color: var(--text3); }
   .cal-day.today.no-data { outline: 1.5px solid var(--accent); }
 
+  /* ── DRAG SORT ── */
+  .drag-handle { color: var(--text3); font-size: 18px; cursor: grab; padding: 0 8px 0 0; flex-shrink: 0; user-select: none; letter-spacing: -2px; }
+  .drag-handle:active { cursor: grabbing; }
+  .task-settings-item.dragging { opacity: 0.4; }
+  .task-settings-item.drag-over { border-top: 2px solid var(--accent); background: rgba(139,111,78,0.07); }
+  .sort-hint { font-size: 11px; color: var(--text3); padding: 2px 2px 6px; }
+
   /* ── SETTINGS SUBPAGES ── */
   .settings-subheader {
     display: flex; align-items: center; gap: 10px;
@@ -685,8 +692,15 @@
           <button class="settings-back" onclick="showSettingsView('home')">‹ 返回</button>
           <div class="settings-subtitle">任務管理</div>
         </div>
-        <div class="settings-section" id="task-list-settings"></div>
-        <button class="btn-primary" style="margin-top:12px" onclick="openAddTask()">＋ 新增任務</button>
+
+        <div class="section-label">每日例行任務</div>
+        <div class="sort-hint">長按拖曳可調整順序</div>
+        <div class="settings-section" id="task-list-daily"></div>
+        <button class="btn-primary" style="margin-top:10px" onclick="openAddTask('daily')">＋ 新增每日任務</button>
+
+        <div class="section-label" style="margin-top:16px">單日任務</div>
+        <div class="settings-section" id="task-list-oneoff"></div>
+        <button class="btn-primary" style="margin-top:10px" onclick="openAddTask('oneoff')">＋ 新增單日任務</button>
       </div>
 
       <!-- ④ 資料子頁 -->
@@ -977,7 +991,7 @@ function createQuestCard(task, isDone, idx) {
       <div class="quest-name">${task.name}</div>
       <div class="quest-meta">${task.type === 'daily' ? '每日例行' : '單日任務'}</div>
     </div>
-    <div class="quest-xp">+${Math.round(100 / Math.max(1, DB.tasks.filter(t=>t.type==='daily').length))} XP</div>
+    <div class="quest-xp">+10 XP</div>
     <div class="quest-check">${isDone ? '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="white" stroke-width="2"><polyline points="2,6 5,9 10,3"/></svg>' : ''}</div>
   `;
   card.addEventListener('click', (e) => {
@@ -996,26 +1010,28 @@ function toggleTask(taskId, x, y) {
   const tk = todayKey();
   const wasCompleted = DB.records[tk][taskId];
   DB.records[tk][taskId] = !wasCompleted;
+  const XP = 10;
 
   if (!wasCompleted) {
-    // Completing: award XP proportional to task count
-    const dailyCount = DB.tasks.filter(t => t.type === 'daily').length;
-    const xpGain = dailyCount > 0 ? Math.round(100 / dailyCount) : 10;
-    DB.hero.xp += xpGain;
+    // 完成：加 10 XP，可能升級
+    DB.hero.xp += XP;
     const needed = DB.hero.level * XP_PER_LEVEL;
     if (DB.hero.xp >= needed) {
       DB.hero.level++;
-      DB.hero.xp = DB.hero.xp - needed;
+      DB.hero.xp -= needed;
       setTimeout(() => showAchievement('🎊', '升級！', `Lv.${DB.hero.level} ${getLevelTitle()}`), 300);
     }
     spawnParticles(x, y);
-    spawnBurst('+' + xpGain + ' XP', x, y);
+    spawnBurst('+10 XP', x, y);
     checkAllDone();
   } else {
-    // Undo: remove XP
-    const dailyCount = DB.tasks.filter(t => t.type === 'daily').length;
-    const xpGain = dailyCount > 0 ? Math.round(100 / dailyCount) : 10;
-    DB.hero.xp = Math.max(0, DB.hero.xp - xpGain);
+    // 取消：扣回 10 XP，可能降級
+    DB.hero.xp -= XP;
+    while (DB.hero.xp < 0 && DB.hero.level > 1) {
+      DB.hero.level--;
+      DB.hero.xp += DB.hero.level * XP_PER_LEVEL;
+    }
+    if (DB.hero.xp < 0) DB.hero.xp = 0;
   }
 
   saveDB();
@@ -1300,16 +1316,28 @@ function showSettingsView(view) {
 }
 
 function renderTaskList() {
-  const container = document.getElementById('task-list-settings');
-  container.innerHTML = '';
-  if (DB.tasks.length === 0) {
-    container.innerHTML = '<div style="padding:14px 16px;font-size:13px;color:var(--text3)">尚無任務</div>';
-    return;
-  }
-  DB.tasks.forEach(t => {
+  const dailyContainer  = document.getElementById('task-list-daily');
+  const oneoffContainer = document.getElementById('task-list-oneoff');
+  if (!dailyContainer) return;
+
+  dailyContainer.innerHTML  = '';
+  oneoffContainer.innerHTML = '';
+
+  const daily  = DB.tasks.filter(t => t.type === 'daily');
+  const oneoff = DB.tasks.filter(t => t.type === 'oneoff');
+
+  if (daily.length === 0)
+    dailyContainer.innerHTML  = '<div style="padding:12px 16px;font-size:13px;color:var(--text3)">尚無每日任務</div>';
+  if (oneoff.length === 0)
+    oneoffContainer.innerHTML = '<div style="padding:12px 16px;font-size:13px;color:var(--text3)">尚無單日任務</div>';
+
+  function makeRow(t) {
     const row = document.createElement('div');
     row.className = 'task-settings-item';
+    row.draggable = true;
+    row.dataset.id = t.id;
     row.innerHTML = `
+      <div class="drag-handle" aria-label="拖曳排序">⠿</div>
       <div class="task-settings-info">
         <div class="task-settings-name">${t.name}</div>
         <div class="task-settings-type">${t.type === 'daily' ? '每日例行' : '單日任務' + (t.date ? '・' + t.date : '')}</div>
@@ -1318,7 +1346,57 @@ function renderTaskList() {
         <button class="btn-edit" onclick="openEditTask('${t.id}')">修改</button>
       </div>
     `;
-    container.appendChild(row);
+    return row;
+  }
+
+  daily.forEach(t  => dailyContainer.appendChild(makeRow(t)));
+  oneoff.forEach(t => oneoffContainer.appendChild(makeRow(t)));
+
+  initDragSort(dailyContainer,  'daily');
+  initDragSort(oneoffContainer, 'oneoff');
+}
+
+// ── 拖曳排序 ──
+let dragSrc = null;
+
+function initDragSort(container, type) {
+  container.querySelectorAll('.task-settings-item').forEach(row => {
+    row.addEventListener('dragstart', e => {
+      dragSrc = row;
+      row.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    row.addEventListener('dragend', () => {
+      dragSrc = null;
+      container.querySelectorAll('.task-settings-item').forEach(r => r.classList.remove('dragging','drag-over'));
+    });
+    row.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      if (dragSrc && dragSrc !== row) {
+        container.querySelectorAll('.task-settings-item').forEach(r => r.classList.remove('drag-over'));
+        row.classList.add('drag-over');
+      }
+    });
+    row.addEventListener('drop', e => {
+      e.preventDefault();
+      if (!dragSrc || dragSrc === row) return;
+      // 取得同類任務在 DOM 中的新順序
+      const rows = [...container.querySelectorAll('.task-settings-item')];
+      const srcIdx = rows.indexOf(dragSrc);
+      const tgtIdx = rows.indexOf(row);
+      // 移動 DOM
+      if (srcIdx < tgtIdx) container.insertBefore(dragSrc, row.nextSibling);
+      else container.insertBefore(dragSrc, row);
+      // 同步更新 DB.tasks 順序
+      const newOrder = [...container.querySelectorAll('.task-settings-item')].map(r => r.dataset.id);
+      const otherTasks = DB.tasks.filter(t => t.type !== type);
+      const thisTasks  = newOrder.map(id => DB.tasks.find(t => t.id === id)).filter(Boolean);
+      // 保留其他類型的相對順序，把此類型依新順序插回
+      DB.tasks = [...otherTasks, ...thisTasks];
+      saveDB();
+      renderMain(); // 連動主畫面
+    });
   });
 }
 
@@ -1333,12 +1411,13 @@ function onTypeChange() {
   document.getElementById('date-field').style.display = type === 'oneoff' ? 'block' : 'none';
 }
 
-function openAddTask() {
+function openAddTask(defaultType) {
+  const type = defaultType || 'daily';
   document.getElementById('task-modal-title').textContent = '新增任務';
   document.getElementById('task-name-input').value = '';
-  document.getElementById('task-type-input').value = 'daily';
+  document.getElementById('task-type-input').value = type;
   document.getElementById('task-date-input').value = todayKey();
-  document.getElementById('date-field').style.display = 'none';
+  document.getElementById('date-field').style.display = type === 'oneoff' ? 'block' : 'none';
   document.getElementById('task-edit-id').value = '';
   document.getElementById('delete-task-btn').style.display = 'none';
   document.getElementById('task-modal').classList.add('open');
