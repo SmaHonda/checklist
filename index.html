@@ -30,36 +30,34 @@
     --safe-bottom: env(safe-area-inset-bottom, 0px);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-  html { height: 100%; }
-  body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: 'Noto Sans TC', 'PingFang TC', system-ui, sans-serif; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Noto Sans TC', 'PingFang TC', system-ui, sans-serif; }
   
   #app {
+    position: fixed;
+    inset: 0;
     display: flex;
     flex-direction: column;
-    height: 100svh;
-    padding-top: var(--safe-top);
+    padding-top: env(safe-area-inset-top, 0px);
   }
 
   /* ── PANELS ── */
   .panels {
-    flex: 1 1 0;
+    flex: 1;
     min-height: 0;
-    display: flex;
-    overflow: hidden;
     position: relative;
+    overflow: hidden;
   }
   .panel {
-    flex: 1 1 0;
-    min-height: 0;
-    width: 100%;
-    overflow-y: auto;
+    position: absolute;
+    inset: 0;
+    overflow-y: scroll;
     overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
     display: none;
     flex-direction: column;
     padding: 16px;
-    padding-bottom: 24px;
+    padding-bottom: 32px;
     gap: 12px;
-    -webkit-overflow-scrolling: touch;
   }
   .panel.active { display: flex; }
 
@@ -115,6 +113,9 @@
     display: flex;
     align-items: center;
     gap: 14px;
+    width: 100%;
+    box-sizing: border-box;
+    min-width: 0;
   }
   .hero-avatar {
     width: 52px; height: 52px;
@@ -358,14 +359,16 @@
   .stat-lbl { font-size: 10px; color: var(--text3); margin-top: 2px; }
 
   /* ── SETTINGS PANEL ── */
-  .settings-section { background: var(--bg2); border-radius: 16px; border: 1px solid var(--border); overflow: hidden; }
+  .settings-section { background: var(--bg2); border-radius: 16px; border: 1px solid var(--border); overflow: hidden; width: 100%; }
   .settings-row {
     display: flex; align-items: center;
     padding: 14px 16px;
     border-bottom: 1px solid var(--border);
     cursor: pointer;
     transition: background 0.15s;
+    width: 100%;
     min-width: 0;
+    box-sizing: border-box;
   }
   .settings-row:last-child { border-bottom: none; }
   .settings-row:active { background: var(--bg3); }
@@ -411,7 +414,7 @@
     font-size: 15px; width: 100%; cursor: pointer;
   }
   .fab {
-    position: fixed; bottom: calc(70px + var(--safe-bottom)); right: 16px;
+    position: fixed; bottom: calc(72px + env(safe-area-inset-bottom, 0px)); right: 16px;
     width: 52px; height: 52px; border-radius: 50%;
     background: var(--accent); border: none;
     display: flex; align-items: center; justify-content: center;
@@ -458,6 +461,7 @@
   .task-settings-item {
     display: flex; align-items: center; gap: 10px;
     padding: 10px 12px; border-bottom: 1px solid var(--border);
+    width: 100%; box-sizing: border-box;
   }
   .task-settings-item:last-child { border-bottom: none; }
   .task-settings-info { flex: 1; min-width: 0; overflow: hidden; }
