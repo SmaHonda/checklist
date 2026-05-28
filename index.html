@@ -301,6 +301,23 @@
   .cal-day.gray { color: var(--text3); }
   .cal-day.today.no-data { outline: 1.5px solid var(--accent); }
 
+  /* ── SETTINGS SUBPAGES ── */
+  .settings-subheader {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 16px; padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .settings-back {
+    background: none; border: none; cursor: pointer;
+    font-size: 18px; color: var(--accent); padding: 2px 6px 2px 0;
+    font-weight: 600; flex-shrink: 0;
+  }
+  .settings-back:active { opacity: 0.6; }
+  .settings-subtitle {
+    font-size: 17px; font-weight: 700;
+    color: var(--text); letter-spacing: -0.3px;
+  }
+
   /* ── CAL FILTER ── */
   .cal-filter-wrap { display: flex; align-items: center; gap: 8px; }
   .cal-filter-label { font-size: 11px; color: var(--text3); font-weight: 500; white-space: nowrap; flex-shrink: 0; }
@@ -426,7 +443,7 @@
   .fab:active { transform: scale(0.93); }
 
   /* Completed tasks hidden by default */
-  .completed-list { display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
+  .completed-list { display: flex; flex-direction: column; gap: 8px; }
   .completed-list.collapsed { display: none; }
 
   /* Particles */
@@ -622,46 +639,81 @@
 
     <!-- SETTINGS Panel -->
     <div class="panel" id="panel-settings">
-      <div class="panel-header">
-        <div class="panel-title">設定</div>
-      </div>
 
-      <!-- Profile settings -->
-      <div class="section-label">冒險者設定</div>
-      <div class="settings-section">
-        <div class="settings-row" onclick="openHeroEdit()">
-          <div class="settings-icon">🧙</div>
-          <div class="settings-label">冒險者名稱 / 頭像</div>
-          <div class="settings-arrow">›</div>
+      <!-- ① 設定首頁 -->
+      <div id="settings-home">
+        <div class="panel-header">
+          <div class="panel-title">設定</div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-row" onclick="showSettingsView('hero')">
+            <div class="settings-icon">🧙</div>
+            <div class="settings-label">冒險者設定</div>
+            <div class="settings-arrow">›</div>
+          </div>
+          <div class="settings-row" onclick="showSettingsView('tasks')">
+            <div class="settings-icon">📋</div>
+            <div class="settings-label">任務管理</div>
+            <div class="settings-arrow">›</div>
+          </div>
+          <div class="settings-row" onclick="showSettingsView('data')">
+            <div class="settings-icon">💾</div>
+            <div class="settings-label">資料</div>
+            <div class="settings-arrow">›</div>
+          </div>
         </div>
       </div>
 
-      <!-- Task management -->
-      <div class="section-label" style="margin-top:4px">任務管理</div>
-      <div class="settings-section" id="task-list-settings"></div>
-      <button class="btn-primary" style="margin-top:4px" onclick="openAddTask()">＋ 新增任務</button>
-
-      <!-- Data -->
-      <div class="section-label" style="margin-top:4px">資料</div>
-      <div class="settings-section">
-        <div class="settings-row" onclick="exportData()">
-          <div class="settings-icon">📤</div>
-          <div class="settings-label">匯出資料（JSON）</div>
-          <div class="settings-arrow">›</div>
+      <!-- ② 冒險者設定子頁 -->
+      <div id="settings-hero" style="display:none">
+        <div class="settings-subheader">
+          <button class="settings-back" onclick="showSettingsView('home')">‹ 返回</button>
+          <div class="settings-subtitle">冒險者設定</div>
         </div>
-        <div class="settings-row" onclick="importDataTrigger()">
-          <div class="settings-icon">📥</div>
-          <div class="settings-label">匯入資料</div>
-          <div class="settings-arrow">›</div>
-        </div>
-        <div class="settings-row" onclick="confirmReset()">
-          <div class="settings-icon">🗑️</div>
-          <div class="settings-label" style="color:var(--red)">清除所有資料</div>
-          <div class="settings-arrow">›</div>
+        <div class="settings-section">
+          <div class="settings-row" onclick="openHeroEdit()">
+            <div class="settings-icon">✏️</div>
+            <div class="settings-label">更改名稱 / 頭像</div>
+            <div class="settings-arrow">›</div>
+          </div>
         </div>
       </div>
 
-      <div style="height:16px"></div>
+      <!-- ③ 任務管理子頁 -->
+      <div id="settings-tasks" style="display:none">
+        <div class="settings-subheader">
+          <button class="settings-back" onclick="showSettingsView('home')">‹ 返回</button>
+          <div class="settings-subtitle">任務管理</div>
+        </div>
+        <div class="settings-section" id="task-list-settings"></div>
+        <button class="btn-primary" style="margin-top:12px" onclick="openAddTask()">＋ 新增任務</button>
+      </div>
+
+      <!-- ④ 資料子頁 -->
+      <div id="settings-data" style="display:none">
+        <div class="settings-subheader">
+          <button class="settings-back" onclick="showSettingsView('home')">‹ 返回</button>
+          <div class="settings-subtitle">資料</div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-row" onclick="exportData()">
+            <div class="settings-icon">📤</div>
+            <div class="settings-label">匯出資料（JSON）</div>
+            <div class="settings-arrow">›</div>
+          </div>
+          <div class="settings-row" onclick="importDataTrigger()">
+            <div class="settings-icon">📥</div>
+            <div class="settings-label">匯入資料</div>
+            <div class="settings-arrow">›</div>
+          </div>
+          <div class="settings-row" onclick="confirmReset()">
+            <div class="settings-icon">🗑️</div>
+            <div class="settings-label" style="color:var(--red)">清除所有資料</div>
+            <div class="settings-arrow">›</div>
+          </div>
+        </div>
+      </div>
+
     </div>
 
   </div>
@@ -901,15 +953,19 @@ function renderMain() {
     pl.appendChild(card);
   });
 
-  // Completed list
+  // Completed list — 保留展開/收合狀態
   const cl = document.getElementById('completed-list');
   cl.innerHTML = '';
   completed.forEach((t, i) => {
     const card = createQuestCard(t, true, i);
     cl.appendChild(card);
   });
+  // 重繪後重新套用展開狀態
+  cl.classList.toggle('collapsed', !completedOpen);
+  document.getElementById('toggle-arrow').classList.toggle('open', completedOpen);
 
-  document.getElementById('toggle-completed').style.display = completed.length > 0 ? 'flex' : 'none';
+  const toggleBtn = document.getElementById('toggle-completed');
+  toggleBtn.style.display = completed.length > 0 ? 'flex' : 'none';
 }
 
 function createQuestCard(task, isDone, idx) {
@@ -1235,7 +1291,15 @@ function closeDayModal(e) {
 }
 
 // ══ SETTINGS ══
-function renderSettings() {
+function showSettingsView(view) {
+  ['home','hero','tasks','data'].forEach(v => {
+    const el = document.getElementById('settings-' + v);
+    if (el) el.style.display = v === view ? 'block' : 'none';
+  });
+  if (view === 'tasks') renderTaskList();
+}
+
+function renderTaskList() {
   const container = document.getElementById('task-list-settings');
   container.innerHTML = '';
   if (DB.tasks.length === 0) {
@@ -1256,6 +1320,10 @@ function renderSettings() {
     `;
     container.appendChild(row);
   });
+}
+
+function renderSettings() {
+  showSettingsView('home');
 }
 
 let selectedHeroEmoji = '';
@@ -1331,7 +1399,7 @@ function saveTask() {
   }
   saveDB();
   closeTaskModal();
-  renderSettings();
+  renderTaskList();
   renderMain();
   showToast('任務已儲存 ✓');
 }
@@ -1343,7 +1411,7 @@ function deleteTask() {
   Object.keys(DB.records).forEach(k => delete DB.records[k][id]);
   saveDB();
   closeTaskModal();
-  renderSettings();
+  renderTaskList();
   renderMain();
   showToast('任務已刪除');
 }
