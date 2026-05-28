@@ -300,6 +300,21 @@
   .cal-day.gray { color: var(--text3); }
   .cal-day.today.no-data { outline: 1.5px solid var(--accent); }
 
+  /* ── CAL FILTER ── */
+  .cal-filter-wrap { display: flex; align-items: center; gap: 8px; }
+  .cal-filter-label { font-size: 11px; color: var(--text3); font-weight: 500; white-space: nowrap; flex-shrink: 0; }
+  .cal-filter-scroll { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .cal-filter-scroll::-webkit-scrollbar { display: none; }
+  .cal-filter-btn {
+    flex-shrink: 0; font-size: 12px; font-weight: 500;
+    padding: 5px 12px; border-radius: 20px;
+    background: var(--bg3); color: var(--text2);
+    border: 1px solid var(--border); cursor: pointer; transition: all 0.15s; white-space: nowrap;
+  }
+  .cal-filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .cal-day.task-done { background: rgba(90,138,94,0.2); color: var(--green); }
+  .cal-day.task-miss { background: rgba(184,92,74,0.12); color: var(--red); }
+
   /* Day detail modal */
   .modal-overlay {
     display: none;
@@ -570,6 +585,15 @@
         <div class="stat-card"><div class="stat-num" id="stat-total-days">0</div><div class="stat-lbl">記錄天數</div></div>
         <div class="stat-card"><div class="stat-num" id="stat-best-streak">0</div><div class="stat-lbl">最長連擊</div></div>
         <div class="stat-card"><div class="stat-num" id="stat-avg">0%</div><div class="stat-lbl">平均完成</div></div>
+      </div>
+
+
+      <!-- Task filter -->
+      <div class="cal-filter-wrap">
+        <div class="cal-filter-label">檢視</div>
+        <div class="cal-filter-scroll" id="cal-filter-scroll">
+          <button class="cal-filter-btn active" data-id="all" onclick="setCalFilter('all')">全部任務</button>
+        </div>
       </div>
 
       <!-- Month nav -->
@@ -995,6 +1019,36 @@ function showAchievement(icon, title, name) {
 
 // ══ CALENDAR ══
 let calYear, calMonth;
+let calFilter = 'all'; // 'all' or task id
+
+function renderFilterBtns() {
+  const scroll = document.getElementById('cal-filter-scroll');
+  if (!scroll) return;
+  scroll.innerHTML = '';
+  // All button
+  const allBtn = document.createElement('button');
+  allBtn.className = 'cal-filter-btn' + (calFilter === 'all' ? ' active' : '');
+  allBtn.dataset.id = 'all';
+  allBtn.textContent = '全部任務';
+  allBtn.onclick = () => setCalFilter('all');
+  scroll.appendChild(allBtn);
+  // One button per daily task
+  DB.tasks.filter(t => t.type === 'daily').forEach(t => {
+    const btn = document.createElement('button');
+    btn.className = 'cal-filter-btn' + (calFilter === t.id ? ' active' : '');
+    btn.dataset.id = t.id;
+    btn.textContent = t.name;
+    btn.onclick = () => setCalFilter(t.id);
+    scroll.appendChild(btn);
+  });
+}
+
+function setCalFilter(id) {
+  calFilter = id;
+  renderFilterBtns();
+  renderCalendar();
+}
+
 function initCal() {
   const now = new Date();
   calYear = now.getFullYear();
@@ -1005,6 +1059,7 @@ function renderCalendar() {
   const now = new Date();
   document.getElementById('cal-month-label').textContent = `${calYear}年 ${calMonth + 1}月`;
 
+  renderFilterBtns();
   const firstDay = new Date(calYear, calMonth, 1).getDay();
   const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
 
@@ -1025,17 +1080,27 @@ function renderCalendar() {
     let cls = 'cal-day';
     if (isToday) cls += ' today';
 
-    if (rec) {
-      const total = Object.keys(rec).length;
-      const done = Object.values(rec).filter(Boolean).length;
-      const pct = total > 0 ? done / total : 0;
-      if (pct >= 0.8) cls += ' green';
-      else if (pct >= 0.52) cls += ' yellow';
-      else cls += ' red';
-    } else if (isToday) {
-      cls += ' no-data';
+    if (calFilter === 'all') {
+      // 原本的全覽模式（完成率顏色）
+      if (rec) {
+        const total = Object.keys(rec).length;
+        const done = Object.values(rec).filter(Boolean).length;
+        const pct = total > 0 ? done / total : 0;
+        if (pct >= 0.8) cls += ' green';
+        else if (pct >= 0.52) cls += ' yellow';
+        else cls += ' red';
+      } else if (isToday) {
+        cls += ' no-data';
+      } else {
+        cls += ' gray';
+      }
     } else {
-      cls += ' gray';
+      // 單一任務模式：綠色=完成 紅色=有記錄但未完成 灰色=沒有記錄
+      if (rec && calFilter in rec) {
+        cls += rec[calFilter] ? ' task-done' : ' task-miss';
+      } else {
+        cls += ' gray';
+      }
     }
 
     el.className = cls;
@@ -1051,11 +1116,46 @@ function calPrev() { calMonth--; if (calMonth < 0) { calMonth = 11; calYear--; }
 function calNext() { calMonth++; if (calMonth > 11) { calMonth = 0; calYear++; } renderCalendar(); }
 
 function renderCalStats() {
-  const keys = Object.keys(DB.records);
-  document.getElementById('stat-total-days').textContent = keys.length;
-  
+  const allKeys = Object.keys(DB.records);
+  const sorted = [...allKeys].sort();
+
+  // Update stat label text for context
+  const lbl0 = document.querySelector('.stat-card:nth-child(1) .stat-lbl');
+  const lbl2 = document.querySelector('.stat-card:nth-child(3) .stat-lbl');
+  if (lbl0) lbl0.textContent = calFilter !== 'all' ? '完成天數' : '記錄天數';
+  if (lbl2) lbl2.textContent = calFilter !== 'all' ? '完成率' : '平均完成';
+
+  if (calFilter !== 'all') {
+    // 單一任務統計
+    const doneKeys = sorted.filter(k => DB.records[k][calFilter] === true);
+    document.getElementById('stat-total-days').textContent = doneKeys.length;
+    // 最長連擊
+    let best = 0, cur = 0, prevDate = null;
+    for (const k of sorted) {
+      if (!(calFilter in (DB.records[k] || {}))) continue;
+      if (DB.records[k][calFilter]) {
+        if (prevDate) {
+          const diff = (new Date(k) - new Date(prevDate)) / 86400000;
+          cur = diff <= 1 ? cur + 1 : 1;
+        } else cur = 1;
+        if (cur > best) best = cur;
+        prevDate = k;
+      } else {
+        cur = 0; prevDate = null;
+      }
+    }
+    document.getElementById('stat-best-streak').textContent = best;
+    // 完成率（有記錄的天數中）
+    const withRecord = sorted.filter(k => calFilter in (DB.records[k] || {}));
+    const pct = withRecord.length > 0
+      ? Math.round(doneKeys.length / withRecord.length * 100) : 0;
+    document.getElementById('stat-avg').textContent = pct + '%';
+    return;
+  }
+
+  // 全覽模式
+  document.getElementById('stat-total-days').textContent = allKeys.length;
   let best = 0, cur = 0, prevKey = null;
-  const sorted = [...keys].sort();
   for (const k of sorted) {
     const rec = DB.records[k];
     const total = Object.keys(rec).length;
@@ -1063,11 +1163,8 @@ function renderCalStats() {
     const pct = total > 0 ? done / total : 0;
     if (pct >= 0.5) {
       if (prevKey) {
-        const prev = new Date(prevKey);
-        const curr = new Date(k);
-        const diff = (curr - prev) / 86400000;
-        if (diff <= 1) cur++;
-        else cur = 1;
+        const diff = (new Date(k) - new Date(prevKey)) / 86400000;
+        cur = diff <= 1 ? cur + 1 : 1;
       } else cur = 1;
       if (cur > best) best = cur;
     } else cur = 0;
@@ -1075,15 +1172,15 @@ function renderCalStats() {
   }
   document.getElementById('stat-best-streak').textContent = best;
 
-  if (keys.length > 0) {
+  if (allKeys.length > 0) {
     let total = 0;
-    keys.forEach(k => {
+    allKeys.forEach(k => {
       const rec = DB.records[k];
       const t = Object.keys(rec).length;
       const d = Object.values(rec).filter(Boolean).length;
       total += t > 0 ? d/t : 0;
     });
-    document.getElementById('stat-avg').textContent = Math.round(total / keys.length * 100) + '%';
+    document.getElementById('stat-avg').textContent = Math.round(total / allKeys.length * 100) + '%';
   }
 }
 
