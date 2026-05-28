@@ -1521,9 +1521,32 @@ initCal();
 ensureToday();
 renderMain();
 
-// Register service worker
+// Register service worker + 自動偵測更新
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js').catch(() => {});
+  navigator.serviceWorker.register('./sw.js').then(reg => {
+    // 定期檢查更新（每次開啟頁面都檢查）
+    reg.update();
+
+    // 有新版 SW 等待啟用時，提示使用者
+    reg.addEventListener('updatefound', () => {
+      const newWorker = reg.installing;
+      newWorker.addEventListener('statechange', () => {
+        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+          // 有新版本可用，自動重新整理
+          newWorker.postMessage({ type: 'SKIP_WAITING' });
+        }
+      });
+    });
+  }).catch(() => {});
+
+  // SW 切換完成後重新載入頁面
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!refreshing) {
+      refreshing = true;
+      window.location.reload();
+    }
+  });
 }
 </script>
 </body>
