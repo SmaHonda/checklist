@@ -301,6 +301,25 @@
   .cal-day.gray { color: var(--text3); }
   .cal-day.today.no-data { outline: 1.5px solid var(--accent); }
 
+  /* ── WEEKLY CARD ── */
+  .weekly-progress-row { display: flex; align-items: center; gap: 8px; margin-top: 5px; }
+  .weekly-bar-wrap { flex: 1; height: 5px; background: var(--bg4); border-radius: 3px; overflow: hidden; }
+  .weekly-bar { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--accent), var(--gold)); transition: width 0.4s ease; }
+  .weekly-count { font-size: 11px; color: var(--text3); white-space: nowrap; }
+  .quest-check.checked { background: var(--green); border-color: var(--green); }
+
+  /* ── MONTHLY PICKER ── */
+  .mday-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .mday-nav-label { font-size: 13px; font-weight: 600; color: var(--text); }
+  .mday-nav-btn { background: none; border: none; font-size: 20px; color: var(--accent); cursor: pointer; padding: 0 10px; line-height: 1; }
+  .mday-nav-btn:active { opacity: 0.6; }
+  .mday-grid { display: grid; grid-template-columns: repeat(7,1fr); gap: 5px; }
+  .mday-btn { aspect-ratio:1; border-radius: 8px; background: var(--bg3); border: 1px solid var(--border); font-size: 12px; font-weight: 600; color: var(--text2); cursor: pointer; transition: all 0.15s; display:flex; align-items:center; justify-content:center; }
+  .mday-btn.selected { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .mday-btn.other-month { opacity: 0.35; }
+  .mday-btn:active { transform: scale(0.93); }
+  .mday-hint { font-size:11px; color:var(--text3); margin-top:4px; }
+
   /* ── DRAG SORT ── */
   .drag-handle { color: var(--text3); font-size: 18px; cursor: grab; padding: 0 8px 0 0; flex-shrink: 0; user-select: none; letter-spacing: -2px; }
   .drag-handle:active { cursor: grabbing; }
@@ -593,6 +612,13 @@
       <div class="quest-list" id="pending-list"></div>
 
       <!-- Completed toggle -->
+
+      <!-- Weekly tasks section -->
+      <div id="weekly-section" style="display:none">
+        <div class="section-label">每週任務</div>
+        <div class="quest-list" id="weekly-pending-list"></div>
+      </div>
+
       <div class="toggle-section" id="toggle-completed" onclick="toggleCompleted()">
         <span class="section-label">已完成</span>
         <span class="toggle-arrow" id="toggle-arrow">▶</span>
@@ -698,6 +724,16 @@
         <div class="settings-section" id="task-list-daily"></div>
         <button class="btn-primary" style="margin-top:10px" onclick="openAddTask('daily')">＋ 新增每日任務</button>
 
+        <div class="section-label" style="margin-top:16px">每月任務</div>
+        <div class="sort-hint">指定哪幾天出現</div>
+        <div class="settings-section" id="task-list-monthly"></div>
+        <button class="btn-primary" style="margin-top:10px" onclick="openAddTask('monthly')">＋ 新增每月任務</button>
+
+        <div class="section-label" style="margin-top:16px">每週任務</div>
+        <div class="sort-hint">設定每週完成次數目標</div>
+        <div class="settings-section" id="task-list-weekly"></div>
+        <button class="btn-primary" style="margin-top:10px" onclick="openAddTask('weekly')">＋ 新增每週任務</button>
+
         <div class="section-label" style="margin-top:16px">單日任務</div>
         <div class="settings-section" id="task-list-oneoff"></div>
         <button class="btn-primary" style="margin-top:10px" onclick="openAddTask('oneoff')">＋ 新增單日任務</button>
@@ -775,12 +811,35 @@
         <div class="form-label">任務種類</div>
         <select class="form-input form-select" id="task-type-input" onchange="onTypeChange()">
           <option value="daily">每日例行任務</option>
+          <option value="monthly">每月任務（指定日期）</option>
+          <option value="weekly">每週任務（設定次數）</option>
           <option value="oneoff">單日任務</option>
         </select>
       </div>
       <div class="form-field" id="date-field" style="display:none">
         <div class="form-label">指定日期</div>
         <input class="form-input" type="date" id="task-date-input">
+      </div>
+      <div class="form-field" id="monthly-field" style="display:none">
+        <div class="form-label">指定每月出現的日期</div>
+        <div class="mday-nav">
+          <button type="button" class="mday-nav-btn" onclick="mdayPrev()">‹</button>
+          <span class="mday-nav-label" id="mday-nav-label"></span>
+          <button type="button" class="mday-nav-btn" onclick="mdayNext()">›</button>
+        </div>
+        <div class="mday-grid" id="mday-grid"></div>
+        <div class="mday-hint">可切換月份分別設定，每月設定獨立儲存</div>
+      </div>
+      <div class="form-field" id="weekly-field" style="display:none">
+        <div class="form-label">每週完成次數目標</div>
+        <select class="form-input form-select" id="weekly-target-input">
+          <option value="1">1 次</option>
+          <option value="2">2 次</option>
+          <option value="3">3 次</option>
+          <option value="4">4 次</option>
+          <option value="5">5 次</option>
+          <option value="6">6 次</option>
+        </select>
       </div>
       <input type="hidden" id="task-edit-id">
       <button class="btn-primary" onclick="saveTask()">儲存任務</button>
@@ -828,16 +887,28 @@ let DB = loadDB();
 function loadDB() {
   try {
     const raw = localStorage.getItem('dailyquest_v2');
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const d = JSON.parse(raw);
+      // 遷移舊資料：確保 totalXp 存在
+      if (!d.hero) d.hero = {};
+      if (typeof d.hero.totalXp !== 'number') {
+        const lvl = typeof d.hero.level === 'number' ? d.hero.level - 1 : 0;
+        const xp  = typeof d.hero.xp    === 'number' ? d.hero.xp    : 0;
+        d.hero.totalXp = lvl * 100 + xp;
+      }
+      if (!d.hero.name)  d.hero.name  = '冒險者';
+      if (!d.hero.emoji) d.hero.emoji = '🧙';
+      return d;
+    }
   } catch(e) {}
   return {
     tasks: [
-      { id: 't1', name: '早上起床喝水', emoji: '💧', type: 'daily' },
-      { id: 't2', name: '每日運動', emoji: '💪', type: 'daily' },
-      { id: 't3', name: '閱讀30分鐘', emoji: '📚', type: 'daily' },
+      { id: 't1', name: '早上起床喝水', type: 'daily' },
+      { id: 't2', name: '每日運動',     type: 'daily' },
+      { id: 't3', name: '閱讀30分鐘',  type: 'daily' },
     ],
-    records: {},  // { "2025-01-15": { t1: true, t2: false, ... } }
-    hero: { name: '冒險者', emoji: '🧙', xp: 0, level: 1 },
+    records: {},
+    hero: { name: '冒險者', emoji: '🧙', totalXp: 0 },
     streak: 0,
     lastDate: null
   };
@@ -852,25 +923,59 @@ function todayKey() {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
+// ── 工具：取得該日期所在週的 key（週日為起始）
+function weekKey(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  const day = d.getDay(); // 0=週日
+  const sun = new Date(d);
+  sun.setDate(d.getDate() - day);
+  return `${sun.getFullYear()}-${String(sun.getMonth()+1).padStart(2,'0')}-${String(sun.getDate()).padStart(2,'0')}`;
+}
+
+// ── 工具：取得 weeklyRecords（懶初始化）
+function getWeeklyRec(wk) {
+  if (!DB.weeklyRecords) DB.weeklyRecords = {};
+  if (!DB.weeklyRecords[wk]) DB.weeklyRecords[wk] = {};
+  return DB.weeklyRecords[wk];
+}
+
 function ensureToday() {
   const tk = todayKey();
-  if (!DB.records[tk]) {
-    DB.records[tk] = {};
-    // Add all daily tasks
-    DB.tasks.filter(t => t.type === 'daily').forEach(t => {
-      DB.records[tk][t.id] = false;
-    });
-  }
-  // Add any daily tasks not yet in today
+  const todayDow = new Date(tk + 'T00:00:00').getDay(); // 0=週日
+
+  if (!DB.records[tk]) DB.records[tk] = {};
+
+  // daily tasks
   DB.tasks.filter(t => t.type === 'daily').forEach(t => {
     if (!(t.id in DB.records[tk])) DB.records[tk][t.id] = false;
   });
-  // Oneoff tasks: ensure their specific date record exists
+  // monthly tasks：查當月 key（新格式 object）或舊格式 array
+  const todayDate = new Date(tk + 'T00:00:00').getDate();
+  const todayMonthKey = tk.slice(0, 7); // "2025-06"
+  DB.tasks.filter(t => t.type === 'monthly' && t.monthDays).forEach(t => {
+    let activeDays;
+    if (Array.isArray(t.monthDays)) {
+      activeDays = t.monthDays; // 舊格式相容
+    } else {
+      activeDays = t.monthDays[todayMonthKey] || [];
+    }
+    if (activeDays.includes(todayDate)) {
+      if (!(t.id in DB.records[tk])) DB.records[tk][t.id] = false;
+    }
+  });
+  // oneoff tasks
   DB.tasks.filter(t => t.type === 'oneoff' && t.date).forEach(t => {
     if (!DB.records[t.date]) DB.records[t.date] = {};
     if (!(t.id in DB.records[t.date])) DB.records[t.date][t.id] = false;
   });
-  // Check streak
+  // weekly tasks: 初始化本週紀錄
+  if (!DB.weeklyRecords) DB.weeklyRecords = {};
+  const wk = weekKey(tk);
+  DB.tasks.filter(t => t.type === 'weekly').forEach(t => {
+    const wr = getWeeklyRec(wk);
+    if (!wr[t.id]) wr[t.id] = [];
+  });
+
   checkStreak();
   saveDB();
 }
@@ -918,13 +1023,41 @@ function renderMain() {
   document.getElementById('today-date').textContent = dateStr;
 
   // Build task lists
-  const allTasks = DB.tasks.filter(t => t.type === 'daily' || (t.type === 'oneoff' && t.date === tk));
-  const pending = allTasks.filter(t => !rec[t.id]);
-  const completed = allTasks.filter(t => rec[t.id]);
+  const todayDow = new Date(tk + 'T00:00:00').getDay();
+  const wk = weekKey(tk);
+  const weekRec = DB.weeklyRecords && DB.weeklyRecords[wk] ? DB.weeklyRecords[wk] : {};
+
+  // 一般任務（daily / cycle / oneoff）
+  const todayDate = new Date(tk + 'T00:00:00').getDate();
+  const regularTasks = DB.tasks.filter(t =>
+    (t.type === 'daily') ||
+    (t.type === 'monthly' && t.monthDays && (() => {
+      const mk = tk.slice(0,7);
+      const days = Array.isArray(t.monthDays) ? t.monthDays : (t.monthDays[mk] || []);
+      return days.includes(todayDate);
+    })()) ||
+    (t.type === 'oneoff' && t.date === tk)
+  );
+  const pending   = regularTasks.filter(t => !rec[t.id]);
+  const completed = regularTasks.filter(t =>  rec[t.id]);
+
+  // 每週任務
+  const weeklyTasks = DB.tasks.filter(t => t.type === 'weekly');
+  const weeklyDone  = weeklyTasks.filter(t => {
+    const done = (weekRec[t.id] || []).length;
+    return done >= (t.weeklyTarget || 1);
+  });
+  const weeklyPending = weeklyTasks.filter(t => {
+    const done = (weekRec[t.id] || []).length;
+    return done < (t.weeklyTarget || 1);
+  });
+
+  // 整體進度（含每週任務）
+  const allTasks = [...regularTasks, ...weeklyTasks];
 
   // Progress
   const total = allTasks.length;
-  const doneCount = completed.length;
+  const doneCount = completed.length + weeklyDone.length;
   const pct = total > 0 ? Math.round(doneCount / total * 100) : 0;
 
   document.getElementById('ring-pct').textContent = pct + '%';
@@ -940,18 +1073,19 @@ function renderMain() {
   // Hero
   document.getElementById('hero-emoji').textContent = DB.hero.emoji;
   document.getElementById('hero-name').textContent = DB.hero.name;
-  document.getElementById('hero-level').textContent = DB.hero.level;
   document.getElementById('streak-num').textContent = DB.streak || 0;
 
-  let xpNeeded = DB.hero.level * XP_PER_LEVEL;
-  let xpCur = DB.hero.xp % xpNeeded || DB.hero.xp;
-  document.getElementById('xp-bar').style.width = Math.min(100, xpCur / xpNeeded * 100) + '%';
-  document.getElementById('xp-label').textContent = `${xpCur} / ${xpNeeded} XP`;
+  if (!DB.hero.totalXp) DB.hero.totalXp = (DB.hero.xp || 0) + ((DB.hero.level || 1) - 1) * XP_PER_LEVEL;
+  const curLevel = Math.floor(DB.hero.totalXp / XP_PER_LEVEL) + 1;
+  const xpCur    = DB.hero.totalXp % XP_PER_LEVEL;
+  document.getElementById('hero-level').textContent = curLevel;
+  document.getElementById('xp-bar').style.width = (xpCur / XP_PER_LEVEL * 100) + '%';
+  document.getElementById('xp-label').textContent = `${xpCur} / ${XP_PER_LEVEL} XP`;
 
   // Title
   let title = LEVEL_TITLES[0][1];
   for (const [lv, t] of LEVEL_TITLES) {
-    if (DB.hero.level >= lv) title = t;
+    if (curLevel >= lv) title = t;
   }
   document.getElementById('hero-title').textContent = title;
 
@@ -967,19 +1101,33 @@ function renderMain() {
     pl.appendChild(card);
   });
 
+  // Weekly pending list
+  const wpl = document.getElementById('weekly-pending-list');
+  if (wpl) {
+    wpl.innerHTML = '';
+    weeklyPending.forEach((t, i) => {
+      wpl.appendChild(createWeeklyCard(t, weekRec[t.id] || [], tk));
+    });
+    document.getElementById('weekly-section').style.display = weeklyPending.length > 0 ? 'block' : 'none';
+  }
+
   // Completed list — 保留展開/收合狀態
+  const allCompleted = [...completed, ...weeklyDone];
   const cl = document.getElementById('completed-list');
   cl.innerHTML = '';
   completed.forEach((t, i) => {
     const card = createQuestCard(t, true, i);
     cl.appendChild(card);
   });
-  // 重繪後重新套用展開狀態
+  weeklyDone.forEach((t, i) => {
+    const card = createWeeklyCard(t, weekRec[t.id] || [], tk, true);
+    cl.appendChild(card);
+  });
   cl.classList.toggle('collapsed', !completedOpen);
   document.getElementById('toggle-arrow').classList.toggle('open', completedOpen);
 
   const toggleBtn = document.getElementById('toggle-completed');
-  toggleBtn.style.display = completed.length > 0 ? 'flex' : 'none';
+  toggleBtn.style.display = allCompleted.length > 0 ? 'flex' : 'none';
 }
 
 function createQuestCard(task, isDone, idx) {
@@ -1005,33 +1153,77 @@ function createQuestCard(task, isDone, idx) {
   return card;
 }
 
+function createWeeklyCard(task, doneDates, tk, isDone) {
+  const target = task.weeklyTarget || 1;
+  const count  = doneDates.length;
+  const pct    = Math.min(100, Math.round(count / target * 100));
+  const todayDone = doneDates.includes(tk);
+
+  const card = document.createElement('div');
+  card.className = 'quest-card weekly-card' + (isDone ? ' completed' : '');
+  card.innerHTML = `
+    <div class="quest-body" style="flex:1;min-width:0">
+      <div class="quest-name">${task.name}</div>
+      <div class="weekly-progress-row">
+        <div class="weekly-bar-wrap"><div class="weekly-bar" style="width:${pct}%"></div></div>
+        <div class="weekly-count">${count}/${target}</div>
+      </div>
+    </div>
+    <div class="quest-xp">+10 XP</div>
+    <div class="quest-check${todayDone ? ' checked' : ''}">${todayDone ? '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="white" stroke-width="2"><polyline points="2,6 5,9 10,3"/></svg>' : ''}</div>
+  `;
+  card.addEventListener('click', (e) => {
+    toggleWeeklyTask(task.id, tk, e.clientX, e.clientY);
+  });
+  return card;
+}
+
+function toggleWeeklyTask(taskId, tk, x, y) {
+  ensureToday();
+  const wk = weekKey(tk);
+  if (!DB.weeklyRecords) DB.weeklyRecords = {};
+  if (!DB.weeklyRecords[wk]) DB.weeklyRecords[wk] = {};
+  if (!DB.weeklyRecords[wk][taskId]) DB.weeklyRecords[wk][taskId] = [];
+
+  const arr = DB.weeklyRecords[wk][taskId];
+  const idx = arr.indexOf(tk);
+  if (idx === -1) {
+    arr.push(tk);
+    DB.hero.totalXp = (DB.hero.totalXp || 0) + 10;
+    const newLevel = Math.floor(DB.hero.totalXp / 100) + 1;
+    if (newLevel > Math.floor((DB.hero.totalXp - 10) / 100) + 1) {
+      setTimeout(() => showAchievement('🎊', '升級！', `Lv.${newLevel} ${getLevelTitle()}`), 300);
+    }
+    spawnParticles(x, y);
+    spawnBurst('+10 XP', x, y);
+  } else {
+    arr.splice(idx, 1);
+    DB.hero.totalXp = Math.max(0, (DB.hero.totalXp || 0) - 10);
+  }
+  saveDB();
+  renderMain();
+}
+
+
 function toggleTask(taskId, x, y) {
   ensureToday();
   const tk = todayKey();
   const wasCompleted = DB.records[tk][taskId];
   DB.records[tk][taskId] = !wasCompleted;
   const XP = 10;
+  if (!DB.hero.totalXp) DB.hero.totalXp = 0;
 
   if (!wasCompleted) {
-    // 完成：加 10 XP，可能升級
-    DB.hero.xp += XP;
-    const needed = DB.hero.level * XP_PER_LEVEL;
-    if (DB.hero.xp >= needed) {
-      DB.hero.level++;
-      DB.hero.xp -= needed;
-      setTimeout(() => showAchievement('🎊', '升級！', `Lv.${DB.hero.level} ${getLevelTitle()}`), 300);
+    DB.hero.totalXp += XP;
+    const newLevel = Math.floor(DB.hero.totalXp / XP_PER_LEVEL) + 1;
+    if (newLevel > (Math.floor((DB.hero.totalXp - XP) / XP_PER_LEVEL) + 1)) {
+      setTimeout(() => showAchievement('🎊', '升級！', `Lv.${newLevel} ${getLevelTitle()}`), 300);
     }
     spawnParticles(x, y);
     spawnBurst('+10 XP', x, y);
     checkAllDone();
   } else {
-    // 取消：扣回 10 XP，可能降級
-    DB.hero.xp -= XP;
-    while (DB.hero.xp < 0 && DB.hero.level > 1) {
-      DB.hero.level--;
-      DB.hero.xp += DB.hero.level * XP_PER_LEVEL;
-    }
-    if (DB.hero.xp < 0) DB.hero.xp = 0;
+    DB.hero.totalXp = Math.max(0, DB.hero.totalXp - XP);
   }
 
   saveDB();
@@ -1039,9 +1231,10 @@ function toggleTask(taskId, x, y) {
 }
 
 function getLevelTitle() {
+  const lv = Math.floor((DB.hero.totalXp || 0) / XP_PER_LEVEL) + 1;
   let title = LEVEL_TITLES[0][1];
-  for (const [lv, t] of LEVEL_TITLES) {
-    if (DB.hero.level >= lv) title = t;
+  for (const [lvMin, t] of LEVEL_TITLES) {
+    if (lv >= lvMin) title = t;
   }
   return title;
 }
@@ -1108,8 +1301,8 @@ function renderFilterBtns() {
   allBtn.textContent = '全部任務';
   allBtn.onclick = () => setCalFilter('all');
   scroll.appendChild(allBtn);
-  // One button per daily task
-  DB.tasks.filter(t => t.type === 'daily').forEach(t => {
+  // daily / cycle / weekly 都可以單獨篩選
+  DB.tasks.filter(t => ['daily','monthly','weekly'].includes(t.type)).forEach(t => {
     const btn = document.createElement('button');
     btn.className = 'cal-filter-btn' + (calFilter === t.id ? ' active' : '');
     btn.dataset.id = t.id;
@@ -1171,11 +1364,20 @@ function renderCalendar() {
         cls += ' gray';
       }
     } else {
-      // 單一任務模式：綠色=完成 紅色=有記錄但未完成 灰色=沒有記錄
-      if (rec && calFilter in rec) {
-        cls += rec[calFilter] ? ' task-done' : ' task-miss';
+      // 單一任務模式
+      const filterTask = DB.tasks.find(t => t.id === calFilter);
+      if (filterTask && filterTask.type === 'weekly') {
+        // weekly: 看那天有沒有在 weeklyRecords 裡
+        const wk = weekKey(key);
+        const wr = DB.weeklyRecords && DB.weeklyRecords[wk] && DB.weeklyRecords[wk][calFilter];
+        cls += (wr && wr.includes(key)) ? ' task-done' : ' gray';
       } else {
-        cls += ' gray';
+        // daily / monthly / oneoff
+        if (rec && calFilter in rec) {
+          cls += rec[calFilter] ? ' task-done' : ' task-miss';
+        } else {
+          cls += ' gray';
+        }
       }
     }
 
@@ -1202,8 +1404,26 @@ function renderCalStats() {
   if (lbl2) lbl2.textContent = calFilter !== 'all' ? '完成率' : '平均完成';
 
   if (calFilter !== 'all') {
-    // 單一任務統計
-    const doneKeys = sorted.filter(k => DB.records[k][calFilter] === true);
+    const filterTask = DB.tasks.find(t => t.id === calFilter);
+    // weekly 任務統計（看 weeklyRecords）
+    if (filterTask && filterTask.type === 'weekly') {
+      let totalDone = 0;
+      if (DB.weeklyRecords) {
+        Object.values(DB.weeklyRecords).forEach(wr => {
+          if (wr[calFilter]) totalDone += wr[calFilter].length;
+        });
+      }
+      document.getElementById('stat-total-days').textContent = totalDone;
+      document.getElementById('stat-best-streak').textContent = '-';
+      const target = filterTask.weeklyTarget || 1;
+      const totalWeeks = DB.weeklyRecords ? Object.keys(DB.weeklyRecords).length : 0;
+      const completedWeeks = DB.weeklyRecords ? Object.values(DB.weeklyRecords).filter(wr => (wr[calFilter]||[]).length >= target).length : 0;
+      const pct = totalWeeks > 0 ? Math.round(completedWeeks / totalWeeks * 100) : 0;
+      document.getElementById('stat-avg').textContent = pct + '%';
+      return;
+    }
+    // 單一任務統計（daily / cycle）
+    const doneKeys = sorted.filter(k => DB.records[k] && DB.records[k][calFilter] === true);
     document.getElementById('stat-total-days').textContent = doneKeys.length;
     // 最長連擊
     let best = 0, cur = 0, prevDate = null;
@@ -1316,20 +1536,27 @@ function showSettingsView(view) {
 }
 
 function renderTaskList() {
-  const dailyContainer  = document.getElementById('task-list-daily');
-  const oneoffContainer = document.getElementById('task-list-oneoff');
-  if (!dailyContainer) return;
+  const containers = {
+    daily:  document.getElementById('task-list-daily'),
+    monthly: document.getElementById('task-list-monthly'),
+    weekly: document.getElementById('task-list-weekly'),
+    oneoff: document.getElementById('task-list-oneoff'),
+  };
+  if (!containers.daily) return;
 
-  dailyContainer.innerHTML  = '';
-  oneoffContainer.innerHTML = '';
+  const DOW_SHORT = ['日','一','二','三','四','五','六'];
 
-  const daily  = DB.tasks.filter(t => t.type === 'daily');
-  const oneoff = DB.tasks.filter(t => t.type === 'oneoff');
-
-  if (daily.length === 0)
-    dailyContainer.innerHTML  = '<div style="padding:12px 16px;font-size:13px;color:var(--text3)">尚無每日任務</div>';
-  if (oneoff.length === 0)
-    oneoffContainer.innerHTML = '<div style="padding:12px 16px;font-size:13px;color:var(--text3)">尚無單日任務</div>';
+  function typeLabel(t) {
+    if (t.type === 'daily')  return '每日例行';
+    if (t.type === 'monthly') {
+      if (!t.monthDays) return '每月任務';
+      if (Array.isArray(t.monthDays)) return '每月・' + t.monthDays.sort((a,b)=>a-b).join(',') + ' 日';
+      const months = Object.keys(t.monthDays).sort();
+      return '每月・已設定 ' + months.length + ' 個月';
+    }
+    if (t.type === 'weekly') return `每週 ${t.weeklyTarget||1} 次`;
+    return '單日・' + (t.date || '');
+  }
 
   function makeRow(t) {
     const row = document.createElement('div');
@@ -1337,10 +1564,10 @@ function renderTaskList() {
     row.draggable = true;
     row.dataset.id = t.id;
     row.innerHTML = `
-      <div class="drag-handle" aria-label="拖曳排序">⠿</div>
+      <div class="drag-handle">⠿</div>
       <div class="task-settings-info">
         <div class="task-settings-name">${t.name}</div>
-        <div class="task-settings-type">${t.type === 'daily' ? '每日例行' : '單日任務' + (t.date ? '・' + t.date : '')}</div>
+        <div class="task-settings-type">${typeLabel(t)}</div>
       </div>
       <div class="task-settings-actions">
         <button class="btn-edit" onclick="openEditTask('${t.id}')">修改</button>
@@ -1349,18 +1576,45 @@ function renderTaskList() {
     return row;
   }
 
-  daily.forEach(t  => dailyContainer.appendChild(makeRow(t)));
-  oneoff.forEach(t => oneoffContainer.appendChild(makeRow(t)));
-
-  initDragSort(dailyContainer,  'daily');
-  initDragSort(oneoffContainer, 'oneoff');
+  ['daily','monthly','weekly','oneoff'].forEach(type => {
+    const c = containers[type];
+    c.innerHTML = '';
+    const tasks = DB.tasks.filter(t => t.type === type);
+    const emptyMsg = { daily:'尚無每日任務', cycle:'尚無每月任務', weekly:'尚無每週任務', oneoff:'尚無單日任務' };
+    if (tasks.length === 0) {
+      c.innerHTML = `<div style="padding:12px 16px;font-size:13px;color:var(--text3)">${emptyMsg[type]}</div>`;
+    } else {
+      tasks.forEach(t => c.appendChild(makeRow(t)));
+      initDragSort(c, type);
+    }
+  });
 }
 
-// ── 拖曳排序 ──
+// ── 拖曳排序（支援滑鼠 + 手機觸控）──
 let dragSrc = null;
+let touchClone = null;
+let touchContainer = null;
+let touchType = null;
+
+function commitOrder(container, type) {
+  const newOrder = [...container.querySelectorAll('.task-settings-item')].map(r => r.dataset.id);
+  const otherTasks = DB.tasks.filter(t => t.type !== type);
+  const thisTasks  = newOrder.map(id => DB.tasks.find(t => t.id === id)).filter(Boolean);
+  // 保持其他類型順序，把當前類型依新順序排入
+  const allTypes = ['daily','monthly','weekly','oneoff'];
+  const reordered = [];
+  allTypes.forEach(tp => {
+    if (tp === type) reordered.push(...thisTasks);
+    else reordered.push(...DB.tasks.filter(t => t.type === tp));
+  });
+  DB.tasks = reordered;
+  saveDB();
+  renderMain();
+}
 
 function initDragSort(container, type) {
   container.querySelectorAll('.task-settings-item').forEach(row => {
+    // ── 滑鼠拖曳 ──
     row.addEventListener('dragstart', e => {
       dragSrc = row;
       row.classList.add('dragging');
@@ -1369,33 +1623,66 @@ function initDragSort(container, type) {
     row.addEventListener('dragend', () => {
       dragSrc = null;
       container.querySelectorAll('.task-settings-item').forEach(r => r.classList.remove('dragging','drag-over'));
+      commitOrder(container, type);
     });
     row.addEventListener('dragover', e => {
       e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
       if (dragSrc && dragSrc !== row) {
         container.querySelectorAll('.task-settings-item').forEach(r => r.classList.remove('drag-over'));
         row.classList.add('drag-over');
+        const rows = [...container.querySelectorAll('.task-settings-item')];
+        const si = rows.indexOf(dragSrc), ti = rows.indexOf(row);
+        if (si < ti) container.insertBefore(dragSrc, row.nextSibling);
+        else container.insertBefore(dragSrc, row);
       }
     });
-    row.addEventListener('drop', e => {
+    row.addEventListener('drop', e => { e.preventDefault(); });
+
+    // ── 觸控拖曳 ──
+    const handle = row.querySelector('.drag-handle');
+    if (!handle) return;
+    handle.addEventListener('touchstart', e => {
+      e.stopPropagation();
+      dragSrc = row;
+      touchContainer = container;
+      touchType = type;
+      row.classList.add('dragging');
+      // 建立浮動 clone
+      const rect = row.getBoundingClientRect();
+      touchClone = row.cloneNode(true);
+      touchClone.style.cssText = `position:fixed;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;opacity:0.85;z-index:9999;pointer-events:none;background:var(--bg2);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.15);`;
+      document.body.appendChild(touchClone);
+    }, { passive: true });
+
+    handle.addEventListener('touchmove', e => {
+      if (!dragSrc || !touchClone) return;
       e.preventDefault();
-      if (!dragSrc || dragSrc === row) return;
-      // 取得同類任務在 DOM 中的新順序
-      const rows = [...container.querySelectorAll('.task-settings-item')];
-      const srcIdx = rows.indexOf(dragSrc);
-      const tgtIdx = rows.indexOf(row);
-      // 移動 DOM
-      if (srcIdx < tgtIdx) container.insertBefore(dragSrc, row.nextSibling);
-      else container.insertBefore(dragSrc, row);
-      // 同步更新 DB.tasks 順序
-      const newOrder = [...container.querySelectorAll('.task-settings-item')].map(r => r.dataset.id);
-      const otherTasks = DB.tasks.filter(t => t.type !== type);
-      const thisTasks  = newOrder.map(id => DB.tasks.find(t => t.id === id)).filter(Boolean);
-      // 保留其他類型的相對順序，把此類型依新順序插回
-      DB.tasks = [...otherTasks, ...thisTasks];
-      saveDB();
-      renderMain(); // 連動主畫面
+      const touch = e.touches[0];
+      const rect = dragSrc.getBoundingClientRect();
+      touchClone.style.top  = (touch.clientY - rect.height / 2) + 'px';
+      touchClone.style.left = rect.left + 'px';
+      // 找到觸碰位置下方的 row
+      touchClone.style.display = 'none';
+      const el = document.elementFromPoint(touch.clientX, touch.clientY);
+      touchClone.style.display = '';
+      const target = el && el.closest('.task-settings-item');
+      if (target && target !== dragSrc && target.closest('.settings-section') === container) {
+        container.querySelectorAll('.task-settings-item').forEach(r => r.classList.remove('drag-over'));
+        target.classList.add('drag-over');
+        const rows = [...container.querySelectorAll('.task-settings-item')];
+        const si = rows.indexOf(dragSrc), ti = rows.indexOf(target);
+        if (si < ti) container.insertBefore(dragSrc, target.nextSibling);
+        else container.insertBefore(dragSrc, target);
+      }
+    }, { passive: false });
+
+    handle.addEventListener('touchend', () => {
+      if (!dragSrc) return;
+      dragSrc.classList.remove('dragging');
+      container.querySelectorAll('.task-settings-item').forEach(r => r.classList.remove('drag-over'));
+      if (touchClone) { touchClone.remove(); touchClone = null; }
+      commitOrder(container, touchType);
+      dragSrc = null; touchContainer = null; touchType = null;
     });
   });
 }
@@ -1406,9 +1693,84 @@ function renderSettings() {
 
 let selectedHeroEmoji = '';
 
+// selectedMonthDays: { "2025-06": [1,3,5], "2025-07": [2,8] }
+let selectedMonthDays = {};
+let mdayYear = 0, mdayMonth = 0; // 目前顯示的年月（0-indexed month）
+
+function mdayMonthKey() {
+  return `${mdayYear}-${String(mdayMonth + 1).padStart(2, '0')}`;
+}
+
+function mdayPrev() {
+  mdayMonth--;
+  if (mdayMonth < 0) { mdayMonth = 11; mdayYear--; }
+  renderMdayGrid();
+}
+
+function mdayNext() {
+  mdayMonth++;
+  if (mdayMonth > 11) { mdayMonth = 0; mdayYear++; }
+  renderMdayGrid();
+}
+
+function renderMdayGrid() {
+  const grid = document.getElementById('mday-grid');
+  const label = document.getElementById('mday-nav-label');
+  if (!grid) return;
+
+  const mk = mdayMonthKey();
+  const days = selectedMonthDays[mk] || [];
+  // 該月實際天數
+  const daysInMonth = new Date(mdayYear, mdayMonth + 1, 0).getDate();
+
+  if (label) label.textContent = `${mdayYear} 年 ${mdayMonth + 1} 月`;
+
+  grid.innerHTML = '';
+  for (let d = 1; d <= 31; d++) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    const outOfRange = d > daysInMonth;
+    btn.className = 'mday-btn'
+      + (days.includes(d) ? ' selected' : '')
+      + (outOfRange ? ' other-month' : '');
+    btn.textContent = d;
+    if (!outOfRange) {
+      btn.onclick = () => {
+        const cur = selectedMonthDays[mk] || [];
+        const idx = cur.indexOf(d);
+        if (idx === -1) selectedMonthDays[mk] = [...cur, d];
+        else selectedMonthDays[mk] = cur.filter(x => x !== d);
+        renderMdayGrid();
+      };
+    }
+    grid.appendChild(btn);
+  }
+}
+
+function initMdayPicker(existingData) {
+  const now = new Date();
+  mdayYear  = now.getFullYear();
+  mdayMonth = now.getMonth();
+  // existingData 可能是舊格式 array 或新格式 object
+  if (Array.isArray(existingData)) {
+    // 遷移：把舊陣列視為「每月相同日期」，存到目前月份
+    selectedMonthDays = {};
+    const mk = mdayMonthKey();
+    selectedMonthDays[mk] = [...existingData];
+  } else if (existingData && typeof existingData === 'object') {
+    selectedMonthDays = JSON.parse(JSON.stringify(existingData));
+  } else {
+    selectedMonthDays = {};
+  }
+  renderMdayGrid();
+}
+
 function onTypeChange() {
   const type = document.getElementById('task-type-input').value;
-  document.getElementById('date-field').style.display = type === 'oneoff' ? 'block' : 'none';
+  document.getElementById('date-field').style.display    = type === 'oneoff'  ? 'block' : 'none';
+  document.getElementById('monthly-field').style.display = type === 'monthly' ? 'block' : 'none';
+  document.getElementById('weekly-field').style.display  = type === 'weekly'  ? 'block' : 'none';
+  if (type === 'monthly') initMdayPicker(null);
 }
 
 function openAddTask(defaultType) {
@@ -1417,22 +1779,31 @@ function openAddTask(defaultType) {
   document.getElementById('task-name-input').value = '';
   document.getElementById('task-type-input').value = type;
   document.getElementById('task-date-input').value = todayKey();
-  document.getElementById('date-field').style.display = type === 'oneoff' ? 'block' : 'none';
+  document.getElementById('date-field').style.display    = type === 'oneoff'  ? 'block' : 'none';
+  document.getElementById('monthly-field').style.display = type === 'monthly' ? 'block' : 'none';
+  document.getElementById('weekly-field').style.display  = type === 'weekly'  ? 'block' : 'none';
+  document.getElementById('weekly-target-input').value = '1';
   document.getElementById('task-edit-id').value = '';
   document.getElementById('delete-task-btn').style.display = 'none';
+  if (type === 'monthly') initMdayPicker(null);
   document.getElementById('task-modal').classList.add('open');
 }
 
 function openEditTask(id) {
   const task = DB.tasks.find(t => t.id === id);
   if (!task) return;
+  // 載入已存的 monthDays（新格式 object 或舊格式 array）
   document.getElementById('task-modal-title').textContent = '編輯任務';
   document.getElementById('task-name-input').value = task.name;
   document.getElementById('task-type-input').value = task.type;
   document.getElementById('task-date-input').value = task.date || todayKey();
-  document.getElementById('date-field').style.display = task.type === 'oneoff' ? 'block' : 'none';
+  document.getElementById('date-field').style.display    = task.type === 'oneoff'  ? 'block' : 'none';
+  document.getElementById('monthly-field').style.display = task.type === 'monthly' ? 'block' : 'none';
+  document.getElementById('weekly-field').style.display  = task.type === 'weekly'  ? 'block' : 'none';
+  document.getElementById('weekly-target-input').value = task.weeklyTarget || 1;
   document.getElementById('task-edit-id').value = id;
   document.getElementById('delete-task-btn').style.display = 'block';
+  if (task.type === 'monthly') initMdayPicker(task.monthDays || null);
   document.getElementById('task-modal').classList.add('open');
 }
 
@@ -1446,16 +1817,17 @@ function saveTask() {
 
   const dateVal = document.getElementById('task-date-input').value || todayKey();
 
+  const weeklyTarget = parseInt(document.getElementById('weekly-target-input').value) || 1;
+
   if (editId) {
     const task = DB.tasks.find(t => t.id === editId);
     if (task) {
       task.name = name;
       delete task.emoji;
-      const oldType = task.type;
       task.type = type;
-      if (type === 'oneoff') task.date = dateVal;
-      else delete task.date;
-      // If changed to oneoff with a date, ensure record exists for that date
+      if (type === 'oneoff') task.date = dateVal; else delete task.date;
+      if (type === 'monthly') task.monthDays = JSON.parse(JSON.stringify(selectedMonthDays)); else delete task.monthDays;
+      if (type === 'weekly') task.weeklyTarget = weeklyTarget; else delete task.weeklyTarget;
       if (type === 'oneoff' && task.date) {
         if (!DB.records[task.date]) DB.records[task.date] = {};
         if (!(task.id in DB.records[task.date])) DB.records[task.date][task.id] = false;
@@ -1463,18 +1835,21 @@ function saveTask() {
     }
   } else {
     const id = 't' + Date.now();
-    const newTask = { id, name, type }; // no emoji
+    const newTask = { id, name, type };
     if (type === 'oneoff') newTask.date = dateVal;
+    if (type === 'monthly') newTask.monthDays = JSON.parse(JSON.stringify(selectedMonthDays));
+    if (type === 'weekly') newTask.weeklyTarget = weeklyTarget;
     DB.tasks.push(newTask);
     if (type === 'daily') {
       const tk = todayKey();
       ensureToday();
       DB.records[tk][id] = false;
-    } else {
-      // oneoff: add to the chosen date's record
+    } else if (type === 'oneoff') {
       if (!DB.records[dateVal]) DB.records[dateVal] = {};
       DB.records[dateVal][id] = false;
     }
+    // cycle + weekly: ensureToday 會自動加入
+    ensureToday();
   }
   saveDB();
   closeTaskModal();
