@@ -361,23 +361,34 @@
 
   /* Day detail modal */
   .modal-overlay {
-    display: none;
+    display: flex;
+    visibility: hidden;
+    opacity: 0;
     position: fixed; inset: 0; z-index: 100;
-    background: rgba(0,0,0,0.7);
+    background: rgba(0,0,0,0.55);
     align-items: flex-end;
-    padding-bottom: var(--safe-bottom);
+    transition: opacity 0.2s ease, visibility 0.2s ease;
   }
-  .modal-overlay.open { display: flex; }
+  .modal-overlay.open {
+    visibility: visible;
+    opacity: 1;
+  }
   .modal-sheet {
     background: var(--bg2);
     border-radius: 20px 20px 0 0;
     width: 100%;
-    max-height: 75vh;
+    max-height: 80vh;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     padding: 16px;
-    animation: slideUp 0.25s ease;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    transform: translateY(20px);
+    transition: transform 0.22s ease;
+    will-change: transform;
   }
-  @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+  .modal-overlay.open .modal-sheet {
+    transform: translateY(0);
+  }
   .modal-handle { width: 36px; height: 4px; background: var(--bg4); border-radius: 2px; margin: 0 auto 14px; }
   .modal-title { font-size: 16px; font-weight: 600; margin-bottom: 12px; }
   .modal-task-row {
@@ -1043,12 +1054,18 @@ function renderMain() {
 
   // 每週任務
   const weeklyTasks = DB.tasks.filter(t => t.type === 'weekly');
+  // 確保本週所有 weekly 任務都有初始化（含剛新增的）
+  if (!DB.weeklyRecords) DB.weeklyRecords = {};
+  if (!DB.weeklyRecords[wk]) DB.weeklyRecords[wk] = {};
+  weeklyTasks.forEach(t => {
+    if (!DB.weeklyRecords[wk][t.id]) DB.weeklyRecords[wk][t.id] = [];
+  });
   const weeklyDone  = weeklyTasks.filter(t => {
-    const done = (weekRec[t.id] || []).length;
+    const done = (DB.weeklyRecords[wk][t.id] || []).length;
     return done >= (t.weeklyTarget || 1);
   });
   const weeklyPending = weeklyTasks.filter(t => {
-    const done = (weekRec[t.id] || []).length;
+    const done = (DB.weeklyRecords[wk][t.id] || []).length;
     return done < (t.weeklyTarget || 1);
   });
 
@@ -1106,7 +1123,7 @@ function renderMain() {
   if (wpl) {
     wpl.innerHTML = '';
     weeklyPending.forEach((t, i) => {
-      wpl.appendChild(createWeeklyCard(t, weekRec[t.id] || [], tk));
+      wpl.appendChild(createWeeklyCard(t, (DB.weeklyRecords[wk] || {})[t.id] || [], tk));
     });
     document.getElementById('weekly-section').style.display = weeklyPending.length > 0 ? 'block' : 'none';
   }
@@ -1120,7 +1137,7 @@ function renderMain() {
     cl.appendChild(card);
   });
   weeklyDone.forEach((t, i) => {
-    const card = createWeeklyCard(t, weekRec[t.id] || [], tk, true);
+    const card = createWeeklyCard(t, (DB.weeklyRecords[wk] || {})[t.id] || [], tk, true);
     cl.appendChild(card);
   });
   cl.classList.toggle('collapsed', !completedOpen);
@@ -1638,51 +1655,69 @@ function initDragSort(container, type) {
     });
     row.addEventListener('drop', e => { e.preventDefault(); });
 
-    // ── 觸控拖曳 ──
+    // ── 觸控拖曳（RAF 節流，避免卡頓）──
     const handle = row.querySelector('.drag-handle');
     if (!handle) return;
+    let rafPending = false;
+    let lastTouchX = 0, lastTouchY = 0;
+
     handle.addEventListener('touchstart', e => {
       e.stopPropagation();
       dragSrc = row;
       touchContainer = container;
       touchType = type;
       row.classList.add('dragging');
-      // 建立浮動 clone
       const rect = row.getBoundingClientRect();
       touchClone = row.cloneNode(true);
-      touchClone.style.cssText = `position:fixed;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;opacity:0.85;z-index:9999;pointer-events:none;background:var(--bg2);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.15);`;
+      touchClone.style.cssText = `position:fixed;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;opacity:0.85;z-index:9999;pointer-events:none;background:var(--bg2);border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,0.18);transition:none;`;
       document.body.appendChild(touchClone);
     }, { passive: true });
 
     handle.addEventListener('touchmove', e => {
       if (!dragSrc || !touchClone) return;
       e.preventDefault();
-      const touch = e.touches[0];
-      const rect = dragSrc.getBoundingClientRect();
-      touchClone.style.top  = (touch.clientY - rect.height / 2) + 'px';
-      touchClone.style.left = rect.left + 'px';
-      // 找到觸碰位置下方的 row
-      touchClone.style.display = 'none';
-      const el = document.elementFromPoint(touch.clientX, touch.clientY);
-      touchClone.style.display = '';
-      const target = el && el.closest('.task-settings-item');
-      if (target && target !== dragSrc && target.closest('.settings-section') === container) {
-        container.querySelectorAll('.task-settings-item').forEach(r => r.classList.remove('drag-over'));
-        target.classList.add('drag-over');
-        const rows = [...container.querySelectorAll('.task-settings-item')];
-        const si = rows.indexOf(dragSrc), ti = rows.indexOf(target);
-        if (si < ti) container.insertBefore(dragSrc, target.nextSibling);
-        else container.insertBefore(dragSrc, target);
-      }
+      lastTouchX = e.touches[0].clientX;
+      lastTouchY = e.touches[0].clientY;
+      if (rafPending) return;
+      rafPending = true;
+      requestAnimationFrame(() => {
+        rafPending = false;
+        if (!dragSrc || !touchClone) return;
+        const rect = dragSrc.getBoundingClientRect();
+        touchClone.style.top  = (lastTouchY - rect.height / 2) + 'px';
+        touchClone.style.left = rect.left + 'px';
+        // 暫時隱藏 clone 找下方元素
+        touchClone.style.visibility = 'hidden';
+        const el = document.elementFromPoint(lastTouchX, lastTouchY);
+        touchClone.style.visibility = '';
+        const target = el && el.closest('.task-settings-item');
+        if (target && target !== dragSrc && target.closest('.settings-section') === container) {
+          container.querySelectorAll('.task-settings-item').forEach(r => r.classList.remove('drag-over'));
+          target.classList.add('drag-over');
+          const rows = [...container.querySelectorAll('.task-settings-item')];
+          const si = rows.indexOf(dragSrc), ti = rows.indexOf(target);
+          if (si < ti) container.insertBefore(dragSrc, target.nextSibling);
+          else container.insertBefore(dragSrc, target);
+        }
+      });
     }, { passive: false });
 
     handle.addEventListener('touchend', () => {
+      rafPending = false;
       if (!dragSrc) return;
       dragSrc.classList.remove('dragging');
       container.querySelectorAll('.task-settings-item').forEach(r => r.classList.remove('drag-over'));
       if (touchClone) { touchClone.remove(); touchClone = null; }
       commitOrder(container, touchType);
       dragSrc = null; touchContainer = null; touchType = null;
+    });
+
+    handle.addEventListener('touchcancel', () => {
+      rafPending = false;
+      if (touchClone) { touchClone.remove(); touchClone = null; }
+      if (dragSrc) { dragSrc.classList.remove('dragging'); dragSrc = null; }
+      container.querySelectorAll('.task-settings-item').forEach(r => r.classList.remove('drag-over'));
+      touchContainer = null; touchType = null;
     });
   });
 }
@@ -1735,7 +1770,8 @@ function renderMdayGrid() {
       + (outOfRange ? ' other-month' : '');
     btn.textContent = d;
     if (!outOfRange) {
-      btn.onclick = () => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
         const cur = selectedMonthDays[mk] || [];
         const idx = cur.indexOf(d);
         if (idx === -1) selectedMonthDays[mk] = [...cur, d];
